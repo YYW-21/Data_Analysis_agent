@@ -25,6 +25,14 @@ uv run uvicorn datapilot.main:app --reload
 Open:
 
 ```text
+http://127.0.0.1:8000
+```
+
+The built-in web UI is Chinese by default and includes a language selector for Chinese/English.
+
+API docs:
+
+```text
 http://127.0.0.1:8000/docs
 ```
 
@@ -77,4 +85,3 @@ src/datapilot/
 ## Design Principle
 
 The first version intentionally keeps the core ML workflow deterministic. LLMs are not allowed to execute arbitrary code. This makes the system easier to debug, evaluate, and explain in interviews.
-

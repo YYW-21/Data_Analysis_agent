@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DataPilot</title>
+    <link rel="stylesheet" href="/web/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>DataPilot</h1>
+        <p data-i18n="subtitle">可控的表格数据自动分析与建模工作流</p>
+      </div>
+      <select id="languageSelect" aria-label="Language">
+        <option value="zh">中文</option>
+        <option value="en">English</option>
+      </select>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <div class="section-title">
+          <span class="step">1</span>
+          <h2 data-i18n="uploadTitle">上传数据集</h2>
+        </div>
+        <p class="hint" data-i18n="uploadHint">支持 CSV、XLSX 和 XLS 文件。初版建议使用干净的表格数据。</p>
+        <div class="upload-row">
+          <input id="fileInput" type="file" accept=".csv,.xlsx,.xls" />
+          <button id="uploadButton" data-i18n="uploadButton">上传并分析字段</button>
+        </div>
+        <div id="datasetStatus" class="status"></div>
+        <pre id="profilePreview" class="json-box"></pre>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">
+          <span class="step">2</span>
+          <h2 data-i18n="jobTitle">创建分析任务</h2>
+        </div>
+        <label for="goalInput" data-i18n="goalLabel">分析目标</label>
+        <textarea
+          id="goalInput"
+          rows="3"
+          data-i18n-placeholder="goalPlaceholder"
+          placeholder="例如：分析哪些因素影响客户流失，并训练一个预测模型"
+        ></textarea>
+
+        <label for="targetInput" data-i18n="targetLabel">目标列</label>
+        <input id="targetInput" type="text" placeholder="churn / survived / price" />
+
+        <button id="runButton" data-i18n="runButton">开始自动分析</button>
+        <div id="jobStatus" class="status"></div>
+      </section>
+
+      <section class="panel wide">
+        <div class="section-title">
+          <span class="step">3</span>
+          <h2 data-i18n="resultTitle">分析结果</h2>
+        </div>
+        <div class="summary-grid">
+          <div>
+            <span data-i18n="taskType">任务类型</span>
+            <strong id="taskType">-</strong>
+          </div>
+          <div>
+            <span data-i18n="targetColumn">目标列</span>
+            <strong id="targetColumn">-</strong>
+          </div>
+          <div>
+            <span data-i18n="bestModel">最佳模型</span>
+            <strong id="bestModel">-</strong>
+          </div>
+        </div>
+        <h3 data-i18n="metricsTitle">模型指标</h3>
+        <pre id="metricsBox" class="json-box"></pre>
+        <h3 data-i18n="artifactsTitle">EDA 图表</h3>
+        <div id="artifacts" class="artifact-grid"></div>
+        <h3 data-i18n="reportTitle">报告</h3>
+        <article id="report" class="report"></article>
+      </section>
+    </main>
+
+    <script src="/web/app.js"></script>
+  </body>
+</html>
