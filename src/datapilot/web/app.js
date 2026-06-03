@@ -41,6 +41,15 @@ const i18n = {
     metricsTitle: "模型指标",
     agentPlanTitle: "Agent 计划",
     artifactsTitle: "分析图表",
+    predictTitle: "新数据预测",
+    predictHint: "任务完成后上传新的 CSV / Excel，系统会加载最佳模型并输出预测结果。",
+    predictButton: "上传并预测",
+    predictMissingJob: "请先完成一次训练任务。",
+    predictMissingFile: "请先选择一个新数据文件。",
+    predicting: "正在加载模型并生成预测...",
+    predictDone: "预测完成。",
+    predictionPath: "预测文件",
+    predictionRows: "预测行数",
     reportTitle: "报告",
     errorPrefix: "错误：",
   },
@@ -86,6 +95,16 @@ const i18n = {
     metricsTitle: "Model Metrics",
     agentPlanTitle: "Agent Plan",
     artifactsTitle: "Analysis Charts",
+    predictTitle: "Predict New Data",
+    predictHint:
+      "After training, upload a new CSV / Excel file and DataPilot will predict with the best model.",
+    predictButton: "Upload and Predict",
+    predictMissingJob: "Please complete a training job first.",
+    predictMissingFile: "Please choose a new data file first.",
+    predicting: "Loading model and generating predictions...",
+    predictDone: "Prediction complete.",
+    predictionPath: "Prediction file",
+    predictionRows: "Prediction rows",
     reportTitle: "Report",
     errorPrefix: "Error: ",
   },
@@ -93,14 +112,18 @@ const i18n = {
 
 let currentLanguage = localStorage.getItem("datapilot-language") || "zh";
 let datasetId = null;
+let currentJobId = null;
 
 const languageSelect = document.querySelector("#languageSelect");
 const fileInput = document.querySelector("#fileInput");
 const uploadButton = document.querySelector("#uploadButton");
 const runButton = document.querySelector("#runButton");
+const predictButton = document.querySelector("#predictButton");
 const datasetStatus = document.querySelector("#datasetStatus");
 const jobStatus = document.querySelector("#jobStatus");
+const predictStatus = document.querySelector("#predictStatus");
 const profilePreview = document.querySelector("#profilePreview");
+const predictFileInput = document.querySelector("#predictFileInput");
 const goalInput = document.querySelector("#goalInput");
 const targetInput = document.querySelector("#targetInput");
 const taskType = document.querySelector("#taskType");
@@ -115,6 +138,8 @@ const flowUpload = document.querySelector("#flowUpload");
 const flowProfile = document.querySelector("#flowProfile");
 const flowTrain = document.querySelector("#flowTrain");
 const flowReport = document.querySelector("#flowReport");
+const predictionSummary = document.querySelector("#predictionSummary");
+const predictionTable = document.querySelector("#predictionTable");
 
 function t(key) {
   return i18n[currentLanguage][key] || key;
@@ -220,6 +245,10 @@ runButton.addEventListener("click", async () => {
   agentPlanBox.textContent = "";
   metricsBox.textContent = "";
   metricCards.innerHTML = "";
+  predictionSummary.textContent = "";
+  predictionTable.innerHTML = "";
+  currentJobId = null;
+  predictButton.disabled = true;
 
   try {
     const response = await fetch("/jobs", {
@@ -235,6 +264,7 @@ runButton.addEventListener("click", async () => {
       throw new Error(await parseError(response));
     }
     const data = await response.json();
+    currentJobId = data.job_id;
     taskType.textContent = data.task_type;
     targetColumn.textContent = data.target_column || "-";
     bestModel.textContent = data.best_model || "-";
@@ -257,12 +287,52 @@ runButton.addEventListener("click", async () => {
     const reportData = await reportResponse.json();
     report.textContent = reportData.markdown;
     setStatus(jobStatus, t("runDone"), "ok");
+    predictButton.disabled = false;
     setFlowState({ upload: "done", profile: "done", train: "done", report: "done" });
   } catch (error) {
     setStatus(jobStatus, `${t("errorPrefix")}${error.message}`, "warn");
     setFlowState({ upload: "done", profile: "done", train: "active" });
   } finally {
     runButton.disabled = false;
+  }
+});
+
+predictButton.addEventListener("click", async () => {
+  if (!currentJobId) {
+    setStatus(predictStatus, t("predictMissingJob"), "warn");
+    return;
+  }
+  const file = predictFileInput.files[0];
+  if (!file) {
+    setStatus(predictStatus, t("predictMissingFile"), "warn");
+    return;
+  }
+
+  const form = new FormData();
+  form.append("file", file);
+  predictButton.disabled = true;
+  setStatus(predictStatus, t("predicting"));
+  predictionSummary.textContent = "";
+  predictionTable.innerHTML = "";
+
+  try {
+    const response = await fetch(`/jobs/${currentJobId}/predict`, {
+      method: "POST",
+      body: form,
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response));
+    }
+    const data = await response.json();
+    setStatus(predictStatus, t("predictDone"), "ok");
+    predictionSummary.textContent = `${t("predictionRows")}: ${data.row_count} | ${t(
+      "predictionPath",
+    )}: ${data.prediction_path}`;
+    renderPredictionTable(data.preview || []);
+  } catch (error) {
+    setStatus(predictStatus, `${t("errorPrefix")}${error.message}`, "warn");
+  } finally {
+    predictButton.disabled = false;
   }
 });
 
@@ -279,6 +349,36 @@ function renderMetricCards(metrics) {
     card.appendChild(metric);
     metricCards.appendChild(card);
   });
+}
+
+function renderPredictionTable(rows) {
+  predictionTable.innerHTML = "";
+  if (!rows.length) {
+    return;
+  }
+  const columns = Object.keys(rows[0]);
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  columns.forEach((column) => {
+    const th = document.createElement("th");
+    th.textContent = column;
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+
+  const tbody = document.createElement("tbody");
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    columns.forEach((column) => {
+      const td = document.createElement("td");
+      td.textContent = row[column] ?? "";
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+
+  predictionTable.appendChild(thead);
+  predictionTable.appendChild(tbody);
 }
 
 languageSelect.addEventListener("change", () => {

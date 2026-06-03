@@ -7,7 +7,7 @@ __pycache__/
 .env.*
 !.env.example
 storage/
+benchmarks/results/
 *.egg-info/
 dist/
 build/
-

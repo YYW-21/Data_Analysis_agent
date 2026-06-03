@@ -140,6 +140,7 @@
               <a href="#metricsSection" data-i18n="metricsTitle">模型指标</a>
               <a href="#agentSection" data-i18n="agentPlanTitle">Agent 计划</a>
               <a href="#chartsSection" data-i18n="artifactsTitle">分析图表</a>
+              <a href="#predictSection" data-i18n="predictTitle">新数据预测</a>
               <a href="#reportSection" data-i18n="reportTitle">报告</a>
             </div>
 
@@ -157,6 +158,22 @@
             <section id="chartsSection" class="result-block">
               <h3 data-i18n="artifactsTitle">分析图表</h3>
               <div id="artifacts" class="artifact-grid"></div>
+            </section>
+
+            <section id="predictSection" class="result-block predict-block">
+              <h3 data-i18n="predictTitle">新数据预测</h3>
+              <p class="hint" data-i18n="predictHint">
+                任务完成后上传新的 CSV / Excel，系统会加载最佳模型并输出预测结果。
+              </p>
+              <div class="predict-row">
+                <input id="predictFileInput" type="file" accept=".csv,.xlsx,.xls" />
+                <button id="predictButton" data-i18n="predictButton" disabled>上传并预测</button>
+              </div>
+              <div id="predictStatus" class="status"></div>
+              <div id="predictionSummary" class="prediction-summary"></div>
+              <div class="table-wrap">
+                <table id="predictionTable" class="preview-table"></table>
+              </div>
             </section>
 
             <section id="reportSection" class="result-block">
