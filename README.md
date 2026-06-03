@@ -20,6 +20,7 @@ DataPilot 是一个面向 CSV/XLSX 表格数据的自动分析项目。用户上
 - 生成分类/回归评估图表
 - 生成最佳模型特征重要性
 - 支持上传新数据并调用已训练模型进行预测
+- 支持离线 Benchmark 评测，统计 pipeline 成功率、目标列识别准确率、任务类型识别准确率和耗时
 - 保存模型、图表、上下文和 Markdown 报告
 - 网页端默认中文显示，支持中文/英文切换
 - 没有 API Key 时自动回退到规则逻辑，项目仍可运行
@@ -298,10 +299,60 @@ curl -F "file=@new_data.csv" http://127.0.0.1:8000/jobs/<job_id>/predict
 
 预测接口会加载该任务保存的最佳模型 pipeline，对新数据执行同样的预处理，并返回预测结果预览和预测 CSV 路径。
 
+## Benchmark 评测
+
+项目内置了一个不依赖外网的 benchmark 模块，用 sklearn 内置数据集和 `examples/titanic_sample.csv` 评估工作流稳定性。
+
+运行默认 benchmark：
+
+```bash
+uv run datapilot-benchmark
+```
+
+只跑前两个数据集，适合快速检查：
+
+```bash
+uv run datapilot-benchmark --max-cases 2
+```
+
+启用 Agent 任务理解一起评测：
+
+```bash
+uv run datapilot-benchmark --use-agent
+```
+
+默认评测数据集：
+
+- Breast Cancer
+- Iris
+- Wine
+- Diabetes
+- Titanic Sample
+
+输出指标：
+
+- pipeline 成功率
+- 目标列识别准确率
+- 任务类型识别准确率
+- 每个数据集最佳模型
+- 每个数据集训练耗时
+- Agent 使用次数
+- 规则回退次数
+
+输出文件：
+
+```text
+benchmarks/results/<run_id>/
+  benchmark_results.json
+  benchmark_results.csv
+  benchmark_report.md
+```
+
 ## 项目结构
 
 ```text
 src/datapilot/
+  benchmarks.py           Benchmark 评测模块
   agents/
     agent_planner.py      Agents SDK 任务理解与计划
     orchestrator.py       主工作流编排
