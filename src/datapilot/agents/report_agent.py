@@ -7,7 +7,7 @@ from datapilot.core.config import settings
 
 def generate_report(context: dict) -> str:
     base_report = deterministic_report(context)
-    if not settings.enable_llm_report or not settings.openai_api_key:
+    if not settings.enable_llm_report or not _has_real_api_key():
         return base_report
 
     client = OpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
@@ -28,6 +28,14 @@ def generate_report(context: dict) -> str:
         return content or base_report
     except Exception as exc:
         return f"{base_report}\n\n## LLM Report Note\n\nLLM enhancement failed: `{exc}`\n"
+
+
+def _has_real_api_key() -> bool:
+    return bool(
+        settings.openai_api_key
+        and settings.openai_api_key.strip()
+        and settings.openai_api_key != "your_api_key_here"
+    )
 
 
 def deterministic_report(context: dict) -> str:

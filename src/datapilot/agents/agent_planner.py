@@ -41,15 +41,15 @@ def build_agent_plan(
         if fallback is None:
             raise ValueError("Could not infer target column. Please provide target_column.")
         return _fallback_plan(fallback, "Rule-based fallback plan.")
-    if not settings.openai_api_key:
+    if not _has_real_api_key():
         if fallback is None:
             raise ValueError(
-                "Agent workflow is enabled, but OPENAI_API_KEY is not configured and rules "
-                "could not infer target_column."
+                "Agent workflow is enabled, but OPENAI_API_KEY is not configured with a real "
+                "key and rules could not infer target_column."
             )
         return _fallback_plan(
             fallback,
-            "Agent workflow is enabled, but OPENAI_API_KEY is not configured.",
+            "Agent workflow is enabled, but OPENAI_API_KEY is not configured with a real key.",
         )
 
     agent_context = _agent_context(df, profile, user_goal, target_column)
@@ -103,6 +103,14 @@ def _try_rule_fallback(
         return infer_task(df, user_goal=user_goal, target_column=target_column)
     except ValueError:
         return None
+
+
+def _has_real_api_key() -> bool:
+    return bool(
+        settings.openai_api_key
+        and settings.openai_api_key.strip()
+        and settings.openai_api_key != "your_api_key_here"
+    )
 
 
 def _fallback_plan(fallback: dict, reason: str) -> dict:
