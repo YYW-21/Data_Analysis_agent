@@ -20,6 +20,7 @@ const i18n = {
     targetColumn: "目标列",
     bestModel: "最佳模型",
     metricsTitle: "模型指标",
+    agentPlanTitle: "Agent 计划",
     artifactsTitle: "EDA 图表",
     reportTitle: "报告",
     errorPrefix: "错误：",
@@ -45,6 +46,7 @@ const i18n = {
     targetColumn: "Target Column",
     bestModel: "Best Model",
     metricsTitle: "Model Metrics",
+    agentPlanTitle: "Agent Plan",
     artifactsTitle: "EDA Charts",
     reportTitle: "Report",
     errorPrefix: "Error: ",
@@ -67,6 +69,7 @@ const taskType = document.querySelector("#taskType");
 const targetColumn = document.querySelector("#targetColumn");
 const bestModel = document.querySelector("#bestModel");
 const metricsBox = document.querySelector("#metricsBox");
+const agentPlanBox = document.querySelector("#agentPlanBox");
 const artifacts = document.querySelector("#artifacts");
 const report = document.querySelector("#report");
 
@@ -153,6 +156,7 @@ runButton.addEventListener("click", async () => {
   setStatus(jobStatus, t("running"));
   artifacts.innerHTML = "";
   report.textContent = "";
+  agentPlanBox.textContent = "";
 
   try {
     const response = await fetch("/jobs", {
@@ -172,6 +176,7 @@ runButton.addEventListener("click", async () => {
     targetColumn.textContent = data.target_column || "-";
     bestModel.textContent = data.best_model || "-";
     metricsBox.textContent = JSON.stringify(data.metrics, null, 2);
+    agentPlanBox.textContent = JSON.stringify(data.agent_plan || {}, null, 2);
     data.artifacts.forEach((artifact) => {
       const image = document.createElement("img");
       image.src = storageUrl(artifact);

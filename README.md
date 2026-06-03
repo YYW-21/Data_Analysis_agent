@@ -13,6 +13,7 @@ DataPilot is an initial, controllable tabular data analysis workflow. It accepts
 - Evaluate classification/regression metrics
 - Generate a Markdown report
 - Optionally enhance the report with an OpenAI-compatible LLM API
+- Optionally use OpenAI Agents SDK to infer target column, task type, metric, and workflow plan
 
 ## Quick Start
 
@@ -60,16 +61,25 @@ curl http://127.0.0.1:8000/jobs/<job_id>/report
 
 ## LLM Configuration
 
-LLM reporting is optional. The project uses the official `openai` Python SDK and supports OpenAI-compatible gateways via environment variables:
+LLM reporting and Agent workflow planning are optional. The project uses the official `openai` Python SDK for report writing and the OpenAI Agents SDK for workflow planning. OpenAI-compatible gateways are supported through environment variables:
 
 ```env
 OPENAI_API_KEY=your_key
 OPENAI_BASE_URL=https://your-compatible-endpoint/v1
 OPENAI_MODEL=gpt-4o-mini
 ENABLE_LLM_REPORT=true
+ENABLE_AGENT_WORKFLOW=true
+AGENT_MODEL=gpt-4o-mini
 ```
 
-If no API key is configured, DataPilot falls back to a deterministic Markdown report.
+If no API key is configured, DataPilot falls back to rule-based task inference and a deterministic Markdown report.
+
+The key variables you usually need to edit are:
+
+- `OPENAI_API_KEY`: your API key.
+- `OPENAI_BASE_URL`: your API gateway endpoint, if you use one.
+- `AGENT_MODEL`: the model used by the Agents SDK for target-column and workflow planning.
+- `OPENAI_MODEL`: the model used to polish the final report.
 
 ## Project Structure
 

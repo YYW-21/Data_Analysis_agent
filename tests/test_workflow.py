@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from datapilot.agents.agent_planner import build_agent_plan
 from datapilot.agents.orchestrator import run_analysis_workflow
 from datapilot.tools.profiling import profile_dataframe
 from datapilot.tools.task_inference import infer_task
@@ -36,6 +37,22 @@ def test_infer_task_classification() -> None:
 
     assert task["task_type"] == "classification"
     assert task["target_column"] == "churn"
+
+
+def test_agent_plan_falls_back_to_rules_without_api_key() -> None:
+    df = pd.DataFrame(
+        {
+            "feature": [1, 2, 3, 4],
+            "churn": [0, 1, 0, 1],
+        }
+    )
+    profile = profile_dataframe(df)
+
+    plan = build_agent_plan(df, profile=profile, user_goal="predict churn", target_column=None)
+
+    assert plan["source"] == "rules"
+    assert plan["target_column"] == "churn"
+    assert plan["task_type"] == "classification"
 
 
 def test_run_analysis_workflow_on_sample() -> None:

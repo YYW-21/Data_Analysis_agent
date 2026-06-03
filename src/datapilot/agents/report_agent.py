@@ -44,10 +44,24 @@ def deterministic_report(context: dict) -> str:
         f"- 重复行: {profile['duplicate_rows']}",
         f"- 目标列: `{task['target_column']}`",
         f"- 任务类型: `{task['task_type']}`",
+        f"- 任务理解来源: `{task.get('source', 'rules')}`",
+        f"- 任务理解置信度: {task.get('confidence', 0):.2f}",
         "",
-        "## 2. 数据质量",
+        "## 2. Agent 工作流计划",
         "",
     ]
+    for step in task.get("workflow_steps", []):
+        lines.append(f"- {step}")
+    if task.get("reason"):
+        lines.append(f"- Reason: {task['reason']}")
+
+    lines.extend(
+        [
+            "",
+            "## 3. 数据质量",
+        "",
+        ]
+    )
     if profile["warnings"]:
         lines.extend([f"- {warning}" for warning in profile["warnings"]])
     else:
@@ -56,12 +70,12 @@ def deterministic_report(context: dict) -> str:
     lines.extend(
         [
             "",
-            "## 3. 特征工程",
+            "## 4. 特征工程",
             "",
             f"- 数值特征: {', '.join(ml['features']['numeric']) or '无'}",
             f"- 类别特征: {', '.join(ml['features']['categorical']) or '无'}",
             "",
-            "## 4. 模型训练结果",
+            "## 5. 模型训练结果",
             "",
             f"- 最佳模型: `{ml['best_model']}`",
             f"- 模型文件: `{ml['model_path']}`",
@@ -77,11 +91,10 @@ def deterministic_report(context: dict) -> str:
     lines.extend(
         [
             "",
-            "## 5. 结论",
+            "## 6. 结论",
             "",
             "本次分析完成了数据画像、EDA、确定性预处理、模型训练和指标评估。"
             "建议结合业务背景进一步检查目标列定义、样本偏差和重要特征的可解释性。",
         ]
     )
     return "\n".join(lines) + "\n"
-

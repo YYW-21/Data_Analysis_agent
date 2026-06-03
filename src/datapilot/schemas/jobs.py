@@ -23,4 +23,4 @@ class AnalysisJobResponse(BaseModel):
     report_path: str
     metrics: dict
     artifacts: list[str]
-
+    agent_plan: dict | None = None

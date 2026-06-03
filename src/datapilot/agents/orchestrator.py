@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from datapilot.agents.agent_planner import build_agent_plan
 from datapilot.agents.report_agent import generate_report
 from datapilot.core.storage import job_dir, new_id
 from datapilot.schemas.jobs import AnalysisJobResponse
@@ -8,7 +9,6 @@ from datapilot.tools.data_loader import load_dataframe
 from datapilot.tools.eda import run_eda
 from datapilot.tools.ml import train_and_evaluate
 from datapilot.tools.profiling import profile_dataframe
-from datapilot.tools.task_inference import infer_task
 
 
 def run_analysis_workflow(
@@ -20,7 +20,7 @@ def run_analysis_workflow(
     df = load_dataframe(dataset_path)
 
     profile = profile_dataframe(df)
-    task = infer_task(df, user_goal=user_goal, target_column=target_column)
+    task = build_agent_plan(df, profile=profile, user_goal=user_goal, target_column=target_column)
     artifacts = run_eda(df, task["target_column"], job_dir(job_id, "artifacts"))
     ml_result = train_and_evaluate(
         df=df,
@@ -56,5 +56,5 @@ def run_analysis_workflow(
         report_path=str(report_path),
         metrics=ml_result["metrics"],
         artifacts=artifacts,
+        agent_plan=task,
     )
-
