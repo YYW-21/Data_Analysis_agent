@@ -24,11 +24,7 @@ def infer_column_type(series: pd.Series) -> str:
 def profile_dataframe(df: pd.DataFrame) -> dict:
     missing = df.isna().sum()
     column_types = {col: infer_column_type(df[col]) for col in df.columns}
-    target_candidates = [
-        col
-        for col in df.columns
-        if col.lower() in {"target", "label", "class", "y", "survived", "churn", "price"}
-    ]
+    target_candidates = _target_candidates(df, column_types)
     warnings = []
     if len(df) < 50:
         warnings.append("Dataset has fewer than 50 rows; model evaluation may be unstable.")
@@ -46,3 +42,60 @@ def profile_dataframe(df: pd.DataFrame) -> dict:
         "target_candidates": target_candidates,
         "warnings": warnings,
     }
+
+
+def _target_candidates(df: pd.DataFrame, column_types: dict[str, str]) -> list[str]:
+    strong_names = {
+        "target",
+        "label",
+        "class",
+        "y",
+        "survived",
+        "churn",
+        "price",
+        "sales",
+        "revenue",
+        "score",
+        "rating",
+        "outcome",
+        "result",
+    }
+    soft_keywords = [
+        "target",
+        "label",
+        "class",
+        "churn",
+        "price",
+        "score",
+        "rating",
+        "outcome",
+        "result",
+        "survive",
+        "是否",
+        "标签",
+        "结果",
+        "目标",
+        "价格",
+        "评分",
+        "流失",
+    ]
+
+    candidates: list[str] = []
+    for col in df.columns:
+        normalized = col.lower()
+        if normalized in strong_names or any(keyword in normalized for keyword in soft_keywords):
+            candidates.append(col)
+
+    for col in df.columns:
+        if col in candidates:
+            continue
+        unique_values = df[col].nunique(dropna=True)
+        missing_rate = df[col].isna().mean()
+        if missing_rate > 0.5 or unique_values < 2:
+            continue
+        if column_types[col] in {"boolean", "categorical"} and unique_values <= 20:
+            candidates.append(col)
+        elif column_types[col] == "numeric" and 2 <= unique_values <= min(50, max(len(df) // 2, 2)):
+            candidates.append(col)
+
+    return candidates

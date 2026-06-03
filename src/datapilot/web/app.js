@@ -11,6 +11,9 @@ const i18n = {
     goalLabel: "分析目标",
     goalPlaceholder: "例如：分析哪些因素影响客户流失，并训练一个预测模型",
     targetLabel: "目标列",
+    targetMultiHint: "多个目标列请用英文逗号分隔。",
+    selectAllTargets: "选择所有候选目标列",
+    noTargetCandidates: "当前数据画像没有识别出候选目标列，可手动输入多个列名。",
     runButton: "开始自动分析",
     running: "正在运行自动分析工作流，这可能需要几十秒...",
     runMissing: "请先上传数据集，并填写分析目标。",
@@ -37,6 +40,9 @@ const i18n = {
     goalLabel: "Analysis Goal",
     goalPlaceholder: "Example: analyze churn factors and train a prediction model",
     targetLabel: "Target Column",
+    targetMultiHint: "Use commas to separate multiple target columns.",
+    selectAllTargets: "Select All Candidate Targets",
+    noTargetCandidates: "No candidate target columns were detected. You can enter columns manually.",
     runButton: "Start Analysis",
     running: "Running the analysis workflow. This may take a few dozen seconds...",
     runMissing: "Please upload a dataset and enter an analysis goal first.",
@@ -55,16 +61,19 @@ const i18n = {
 
 let currentLanguage = localStorage.getItem("datapilot-language") || "zh";
 let datasetId = null;
+let targetCandidates = [];
 
 const languageSelect = document.querySelector("#languageSelect");
 const fileInput = document.querySelector("#fileInput");
 const uploadButton = document.querySelector("#uploadButton");
 const runButton = document.querySelector("#runButton");
+const selectAllTargetsButton = document.querySelector("#selectAllTargetsButton");
 const datasetStatus = document.querySelector("#datasetStatus");
 const jobStatus = document.querySelector("#jobStatus");
 const profilePreview = document.querySelector("#profilePreview");
 const goalInput = document.querySelector("#goalInput");
 const targetInput = document.querySelector("#targetInput");
+const targetHint = document.querySelector("#targetHint");
 const taskType = document.querySelector("#taskType");
 const targetColumn = document.querySelector("#targetColumn");
 const bestModel = document.querySelector("#bestModel");
@@ -86,6 +95,7 @@ function applyLanguage() {
   document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => {
     node.placeholder = t(node.dataset.i18nPlaceholder);
   });
+  targetHint.textContent = t("targetMultiHint");
 }
 
 function setStatus(node, message, kind = "") {
@@ -134,9 +144,10 @@ uploadButton.addEventListener("click", async () => {
     }
     const data = await response.json();
     datasetId = data.dataset_id;
+    targetCandidates = data.profile.target_candidates || [];
     profilePreview.textContent = JSON.stringify(data.profile, null, 2);
-    if (data.profile.target_candidates?.length && !targetInput.value) {
-      targetInput.value = data.profile.target_candidates[0];
+    if (targetCandidates.length && !targetInput.value) {
+      targetInput.value = targetCandidates[0];
     }
     setStatus(datasetStatus, `${t("uploadDone")}${datasetId}`, "ok");
   } catch (error) {
@@ -144,6 +155,14 @@ uploadButton.addEventListener("click", async () => {
   } finally {
     uploadButton.disabled = false;
   }
+});
+
+selectAllTargetsButton.addEventListener("click", () => {
+  if (!targetCandidates.length) {
+    setStatus(jobStatus, t("noTargetCandidates"), "warn");
+    return;
+  }
+  targetInput.value = targetCandidates.join(", ");
 });
 
 runButton.addEventListener("click", async () => {
@@ -166,6 +185,7 @@ runButton.addEventListener("click", async () => {
         dataset_id: datasetId,
         user_goal: goalInput.value.trim(),
         target_column: targetInput.value.trim() || null,
+        target_columns: parseTargetColumns(targetInput.value),
       }),
     });
     if (!response.ok) {
@@ -173,7 +193,9 @@ runButton.addEventListener("click", async () => {
     }
     const data = await response.json();
     taskType.textContent = data.task_type;
-    targetColumn.textContent = data.target_column || "-";
+    targetColumn.textContent = data.target_columns?.length
+      ? data.target_columns.join(", ")
+      : data.target_column || "-";
     bestModel.textContent = data.best_model || "-";
     metricsBox.textContent = JSON.stringify(data.metrics, null, 2);
     agentPlanBox.textContent = JSON.stringify(data.agent_plan || {}, null, 2);
@@ -194,6 +216,14 @@ runButton.addEventListener("click", async () => {
     runButton.disabled = false;
   }
 });
+
+function parseTargetColumns(value) {
+  const columns = value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return columns.length ? columns : null;
+}
 
 languageSelect.addEventListener("change", () => {
   currentLanguage = languageSelect.value;

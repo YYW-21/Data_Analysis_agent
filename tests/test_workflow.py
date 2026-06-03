@@ -71,3 +71,22 @@ def test_run_analysis_workflow_on_sample(monkeypatch: pytest.MonkeyPatch) -> Non
     assert result.task_type == "classification"
     assert result.best_model is not None
     assert Path(result.report_path).exists()
+
+
+def test_run_analysis_workflow_with_multiple_targets(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("datapilot.agents.agent_planner.settings.enable_agent_workflow", False)
+    monkeypatch.setattr("datapilot.agents.report_agent.settings.enable_llm_report", False)
+
+    result = run_analysis_workflow(
+        dataset_path=Path("examples/titanic_sample.csv"),
+        user_goal="batch analyze targets",
+        target_columns=["survived", "pclass"],
+    )
+
+    assert result.status == "completed"
+    assert result.task_type == "multi_target"
+    assert result.target_columns == ["survived", "pclass"]
+    assert result.target_results is not None
+    assert len(result.target_results) == 2
+    assert set(result.metrics) == {"survived", "pclass"}
+    assert Path(result.report_path).exists()
