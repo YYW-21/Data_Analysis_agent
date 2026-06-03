@@ -341,9 +341,9 @@ storage/
 
 其中 `processed/<job_id>/` 会包含：
 
-- `cleaned.csv`：去重、删除目标列缺失样本、日期特征展开后的训练数据
-- `feature_preview.csv`：训练特征预览
-- `preprocessing_summary.json`：预处理摘要，包括删除行数、字段类型、缺失值填充策略、编码策略等
+- `cleaned.csv`：去重、删除目标列缺失样本、日期特征展开、缺失值填补后的训练数据
+- `feature_preview.csv`：缺失值填补后的训练特征预览
+- `preprocessing_summary.json`：预处理摘要，包括删除行数、字段类型、每列缺失值填补数量和值、编码策略等
 - `predictions_*.csv`：新数据预测结果
 
 评估图表包括：

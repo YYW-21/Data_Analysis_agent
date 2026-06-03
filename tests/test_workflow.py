@@ -114,6 +114,10 @@ def test_training_uses_advanced_candidate_models(tmp_path: Path) -> None:
     )
     assert Path(result["processed"]["cleaned_csv"]).exists()
     assert Path(result["processed"]["preprocessing_summary_json"]).exists()
+    cleaned = pd.read_csv(result["processed"]["cleaned_csv"])
+    feature_preview = pd.read_csv(result["processed"]["feature_preview_csv"])
+    assert int(cleaned.isna().sum().sum()) == 0
+    assert int(feature_preview.isna().sum().sum()) == 0
     assert result["evaluation_artifacts"]
     assert Path(result["evaluation_artifacts"][0]).exists()
     if result["feature_importance"]:

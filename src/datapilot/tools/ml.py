@@ -232,14 +232,19 @@ def _save_processed_outputs(
     if processed_dir is None:
         return {}
 
-    cleaned_preview = x.copy()
+    imputed_x, imputation_details = _impute_feature_frame(
+        x=x,
+        numeric_features=numeric_features,
+        categorical_features=categorical_features,
+    )
+    cleaned_preview = imputed_x.copy()
     cleaned_preview[target_column] = y
     cleaned_path = processed_dir / "cleaned.csv"
     feature_preview_path = processed_dir / "feature_preview.csv"
     summary_path = processed_dir / "preprocessing_summary.json"
 
     cleaned_preview.to_csv(cleaned_path, index=False, encoding="utf-8-sig")
-    x.head(50).to_csv(feature_preview_path, index=False, encoding="utf-8-sig")
+    imputed_x.head(50).to_csv(feature_preview_path, index=False, encoding="utf-8-sig")
 
     summary = {
         "target_column": target_column,
@@ -254,6 +259,9 @@ def _save_processed_outputs(
         "imputation": {
             "numeric": "median",
             "categorical": "most_frequent",
+            "fallback_numeric": 0,
+            "fallback_categorical": "unknown",
+            "details": imputation_details,
         },
         "encoding": {
             "categorical": "one_hot",
@@ -268,6 +276,41 @@ def _save_processed_outputs(
         "feature_preview_csv": str(feature_preview_path),
         "preprocessing_summary_json": str(summary_path),
     }
+
+
+def _impute_feature_frame(
+    x: pd.DataFrame,
+    numeric_features: list[str],
+    categorical_features: list[str],
+) -> tuple[pd.DataFrame, dict]:
+    imputed = x.copy()
+    details = {
+        "numeric": {},
+        "categorical": {},
+    }
+
+    for col in numeric_features:
+        missing_count = int(imputed[col].isna().sum())
+        fill_value = imputed[col].median()
+        if pd.isna(fill_value):
+            fill_value = 0
+        imputed[col] = imputed[col].fillna(fill_value)
+        details["numeric"][col] = {
+            "missing_count": missing_count,
+            "fill_value": float(fill_value),
+        }
+
+    for col in categorical_features:
+        missing_count = int(imputed[col].isna().sum())
+        mode = imputed[col].mode(dropna=True)
+        fill_value = str(mode.iloc[0]) if not mode.empty else "unknown"
+        imputed[col] = imputed[col].fillna(fill_value)
+        details["categorical"][col] = {
+            "missing_count": missing_count,
+            "fill_value": fill_value,
+        }
+
+    return imputed, details
 
 
 def _save_evaluation_artifacts(
