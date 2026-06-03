@@ -107,6 +107,10 @@ def deterministic_report(context: dict) -> str:
             "",
             f"- 数值特征: {', '.join(ml['features']['numeric']) or '无'}",
             f"- 类别特征: {', '.join(ml['features']['categorical']) or '无'}",
+            f"- 清洗数据: `{ml.get('processed', {}).get('cleaned_csv', '未保存')}`",
+            f"- 特征预览: `{ml.get('processed', {}).get('feature_preview_csv', '未保存')}`",
+            "- 预处理摘要: "
+            f"`{ml.get('processed', {}).get('preprocessing_summary_json', '未保存')}`",
             "",
             "## 5. 模型训练结果",
             "",
@@ -125,10 +129,15 @@ def deterministic_report(context: dict) -> str:
         for item in ml["failed_models"]:
             lines.append(f"- `{item['model']}`: {item['error']}")
 
+    if ml.get("feature_importance", {}).get("top_features"):
+        lines.extend(["", "## 6. 特征重要性", ""])
+        for item in ml["feature_importance"]["top_features"]:
+            lines.append(f"- `{item['feature']}`: {item['importance']:.4f}")
+
     lines.extend(
         [
             "",
-            "## 6. 结论",
+            "## 7. 结论",
             "",
             "本次分析完成了数据画像、EDA、确定性预处理、模型训练和指标评估。"
             "建议结合业务背景进一步检查目标列定义、样本偏差和重要特征的可解释性。",

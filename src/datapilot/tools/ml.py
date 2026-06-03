@@ -1,8 +1,14 @@
+import json
 from pathlib import Path
 
 import joblib
+import matplotlib
 import numpy as np
 import pandas as pd
+
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import (
     ExtraTreesClassifier,
@@ -17,6 +23,7 @@ from sklearn.ensemble import (
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression, LogisticRegression, Ridge
 from sklearn.metrics import (
+    ConfusionMatrixDisplay,
     accuracy_score,
     f1_score,
     mean_absolute_error,
@@ -36,14 +43,23 @@ def train_and_evaluate(
     task_type: str,
     target_column: str,
     model_dir: Path,
+    processed_dir: Path | None = None,
+    artifact_dir: Path | None = None,
 ) -> dict:
     model_dir.mkdir(parents=True, exist_ok=True)
+    if processed_dir:
+        processed_dir.mkdir(parents=True, exist_ok=True)
+    if artifact_dir:
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    original_rows = len(df)
     cleaned = df.drop_duplicates().copy()
     cleaned = cleaned.dropna(subset=[target_column])
 
     y = cleaned[target_column]
     x = cleaned.drop(columns=[target_column])
-    x = x.drop(columns=[col for col in x.columns if x[col].nunique(dropna=True) <= 1])
+    dropped_constant_columns = [col for col in x.columns if x[col].nunique(dropna=True) <= 1]
+    x = x.drop(columns=dropped_constant_columns)
 
     datetime_cols = [
         col for col in x.columns if pd.api.types.is_datetime64_any_dtype(x[col])
@@ -68,6 +84,21 @@ def train_and_evaluate(
 
     if not numeric_features and not categorical_features:
         raise ValueError("No usable feature columns after preprocessing.")
+
+    processed_paths = _save_processed_outputs(
+        x=x,
+        y=y,
+        processed_dir=processed_dir,
+        target_column=target_column,
+        original_rows=original_rows,
+        cleaned_rows=len(cleaned),
+        duplicate_rows=int(df.duplicated().sum()),
+        dropped_target_missing_rows=int(original_rows - len(df.dropna(subset=[target_column]))),
+        dropped_constant_columns=dropped_constant_columns,
+        datetime_columns=datetime_cols,
+        numeric_features=numeric_features,
+        categorical_features=categorical_features,
+    )
 
     preprocessor = ColumnTransformer(
         transformers=[
@@ -140,6 +171,18 @@ def train_and_evaluate(
     model_path = model_dir / f"{best['name']}.joblib"
     artifact = {"pipeline": best["pipeline"], "target_encoder": best["target_encoder"]}
     joblib.dump(artifact, model_path)
+    evaluation_artifacts = _save_evaluation_artifacts(
+        task_type=task_type,
+        pipeline=best["pipeline"],
+        target_encoder=best["target_encoder"],
+        x_test=x_test,
+        y_test=y_test,
+        artifact_dir=artifact_dir,
+    )
+    feature_importance = _save_feature_importance(
+        pipeline=best["pipeline"],
+        artifact_dir=artifact_dir,
+    )
 
     return {
         "best_model": best["name"],
@@ -149,12 +192,206 @@ def train_and_evaluate(
             {"model": item["name"], "metrics": item["metrics"]} for item in results
         ],
         "failed_models": failed_models,
+        "processed": processed_paths,
+        "evaluation_artifacts": evaluation_artifacts,
+        "feature_importance": feature_importance,
         "features": {
             "numeric": numeric_features,
             "categorical": categorical_features,
-            "dropped": [target_column],
+            "dropped": [target_column, *dropped_constant_columns],
         },
     }
+
+
+def predict_with_model(model_path: Path, df: pd.DataFrame) -> pd.DataFrame:
+    artifact = joblib.load(model_path)
+    pipeline = artifact["pipeline"]
+    target_encoder = artifact.get("target_encoder")
+    predictions = pipeline.predict(df)
+    if target_encoder is not None:
+        predictions = target_encoder.inverse_transform(predictions.astype(int))
+    result = df.copy()
+    result["prediction"] = predictions
+    return result
+
+
+def _save_processed_outputs(
+    x: pd.DataFrame,
+    y: pd.Series,
+    processed_dir: Path | None,
+    target_column: str,
+    original_rows: int,
+    cleaned_rows: int,
+    duplicate_rows: int,
+    dropped_target_missing_rows: int,
+    dropped_constant_columns: list[str],
+    datetime_columns: list[str],
+    numeric_features: list[str],
+    categorical_features: list[str],
+) -> dict:
+    if processed_dir is None:
+        return {}
+
+    cleaned_preview = x.copy()
+    cleaned_preview[target_column] = y
+    cleaned_path = processed_dir / "cleaned.csv"
+    feature_preview_path = processed_dir / "feature_preview.csv"
+    summary_path = processed_dir / "preprocessing_summary.json"
+
+    cleaned_preview.to_csv(cleaned_path, index=False, encoding="utf-8-sig")
+    x.head(50).to_csv(feature_preview_path, index=False, encoding="utf-8-sig")
+
+    summary = {
+        "target_column": target_column,
+        "original_rows": original_rows,
+        "cleaned_rows": cleaned_rows,
+        "duplicate_rows_removed": duplicate_rows,
+        "target_missing_rows_removed": dropped_target_missing_rows,
+        "dropped_constant_columns": dropped_constant_columns,
+        "datetime_columns_expanded": datetime_columns,
+        "numeric_features": numeric_features,
+        "categorical_features": categorical_features,
+        "imputation": {
+            "numeric": "median",
+            "categorical": "most_frequent",
+        },
+        "encoding": {
+            "categorical": "one_hot",
+        },
+        "scaling": {
+            "numeric": "standard_scaler",
+        },
+    }
+    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {
+        "cleaned_csv": str(cleaned_path),
+        "feature_preview_csv": str(feature_preview_path),
+        "preprocessing_summary_json": str(summary_path),
+    }
+
+
+def _save_evaluation_artifacts(
+    task_type: str,
+    pipeline: Pipeline,
+    target_encoder: LabelEncoder | None,
+    x_test: pd.DataFrame,
+    y_test: pd.Series,
+    artifact_dir: Path | None,
+) -> list[str]:
+    if artifact_dir is None:
+        return []
+
+    predictions = pipeline.predict(x_test)
+    if target_encoder is not None:
+        predictions = target_encoder.inverse_transform(predictions.astype(int))
+
+    if task_type == "classification":
+        return _save_classification_artifacts(y_test, predictions, artifact_dir)
+    return _save_regression_artifacts(y_test, predictions, artifact_dir)
+
+
+def _save_classification_artifacts(
+    y_test: pd.Series,
+    predictions: np.ndarray,
+    artifact_dir: Path,
+) -> list[str]:
+    artifacts = []
+    path = artifact_dir / "confusion_matrix.png"
+    fig, ax = plt.subplots(figsize=(7, 6))
+    ConfusionMatrixDisplay.from_predictions(y_test, predictions, ax=ax, cmap="Blues")
+    ax.set_title("Confusion Matrix")
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    artifacts.append(str(path))
+    return artifacts
+
+
+def _save_regression_artifacts(
+    y_test: pd.Series,
+    predictions: np.ndarray,
+    artifact_dir: Path,
+) -> list[str]:
+    artifacts = []
+
+    predicted_path = artifact_dir / "predicted_vs_actual.png"
+    fig, ax = plt.subplots(figsize=(7, 6))
+    ax.scatter(y_test, predictions, alpha=0.8)
+    min_value = min(float(np.min(y_test)), float(np.min(predictions)))
+    max_value = max(float(np.max(y_test)), float(np.max(predictions)))
+    ax.plot([min_value, max_value], [min_value, max_value], color="red", linestyle="--")
+    ax.set_title("Predicted vs Actual")
+    ax.set_xlabel("Actual")
+    ax.set_ylabel("Predicted")
+    fig.tight_layout()
+    fig.savefig(predicted_path)
+    plt.close(fig)
+    artifacts.append(str(predicted_path))
+
+    residual_path = artifact_dir / "residual_plot.png"
+    residuals = np.asarray(y_test) - predictions
+    fig, ax = plt.subplots(figsize=(7, 6))
+    ax.scatter(predictions, residuals, alpha=0.8)
+    ax.axhline(0, color="red", linestyle="--")
+    ax.set_title("Residual Plot")
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("Residual")
+    fig.tight_layout()
+    fig.savefig(residual_path)
+    plt.close(fig)
+    artifacts.append(str(residual_path))
+
+    return artifacts
+
+
+def _save_feature_importance(pipeline: Pipeline, artifact_dir: Path | None) -> dict:
+    if artifact_dir is None:
+        return {}
+
+    model = pipeline.named_steps["model"]
+    importance = _extract_model_importance(model)
+    if importance is None:
+        return {}
+
+    feature_names = pipeline.named_steps["preprocessor"].get_feature_names_out()
+    size = min(len(feature_names), len(importance))
+    importance_df = pd.DataFrame(
+        {
+            "feature": feature_names[:size],
+            "importance": np.asarray(importance)[:size],
+        }
+    )
+    importance_df["importance"] = importance_df["importance"].abs()
+    importance_df = importance_df.sort_values("importance", ascending=False).head(20)
+
+    csv_path = artifact_dir / "feature_importance.csv"
+    png_path = artifact_dir / "feature_importance.png"
+    importance_df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+
+    fig, ax = plt.subplots(figsize=(9, 7))
+    ax.barh(importance_df["feature"][::-1], importance_df["importance"][::-1])
+    ax.set_title("Top Feature Importance")
+    ax.set_xlabel("Importance")
+    fig.tight_layout()
+    fig.savefig(png_path)
+    plt.close(fig)
+
+    return {
+        "csv": str(csv_path),
+        "plot": str(png_path),
+        "top_features": importance_df.head(10).to_dict(orient="records"),
+    }
+
+
+def _extract_model_importance(model) -> np.ndarray | None:
+    if hasattr(model, "feature_importances_"):
+        return model.feature_importances_
+    if hasattr(model, "coef_"):
+        coefficient = np.asarray(model.coef_)
+        if coefficient.ndim == 2:
+            return np.mean(np.abs(coefficient), axis=0)
+        return np.abs(coefficient)
+    return None
 
 
 def _candidate_models(task_type: str, y_train: pd.Series) -> dict:

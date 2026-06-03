@@ -5,7 +5,7 @@ import pytest
 
 from datapilot.agents.agent_planner import build_agent_plan
 from datapilot.agents.orchestrator import run_analysis_workflow
-from datapilot.tools.ml import train_and_evaluate
+from datapilot.tools.ml import predict_with_model, train_and_evaluate
 from datapilot.tools.profiling import profile_dataframe
 from datapilot.tools.task_inference import infer_task
 
@@ -97,9 +97,28 @@ def test_training_uses_advanced_candidate_models(tmp_path: Path) -> None:
         }
     )
 
-    result = train_and_evaluate(df, "classification", "survived", tmp_path)
+    artifact_dir = tmp_path / "artifacts"
+    processed_dir = tmp_path / "processed"
+    result = train_and_evaluate(
+        df,
+        "classification",
+        "survived",
+        tmp_path / "models",
+        processed_dir=processed_dir,
+        artifact_dir=artifact_dir,
+    )
     trained_models = {item["model"] for item in result["candidate_metrics"]}
 
     assert {"extra_trees", "gradient_boosting", "hist_gradient_boosting", "xgboost"}.issubset(
         trained_models
     )
+    assert Path(result["processed"]["cleaned_csv"]).exists()
+    assert Path(result["processed"]["preprocessing_summary_json"]).exists()
+    assert result["evaluation_artifacts"]
+    assert Path(result["evaluation_artifacts"][0]).exists()
+    if result["feature_importance"]:
+        assert Path(result["feature_importance"]["plot"]).exists()
+
+    predictions = predict_with_model(Path(result["model_path"]), df.drop(columns=["survived"]))
+    assert "prediction" in predictions.columns
+    assert len(predictions) == len(df)

@@ -21,13 +21,19 @@ def run_analysis_workflow(
 
     profile = profile_dataframe(df)
     task = build_agent_plan(df, profile=profile, user_goal=user_goal, target_column=target_column)
-    artifacts = run_eda(df, task["target_column"], job_dir(job_id, "artifacts"))
+    artifact_dir = job_dir(job_id, "artifacts")
+    artifacts = run_eda(df, task["target_column"], artifact_dir)
     ml_result = train_and_evaluate(
         df=df,
         task_type=task["task_type"],
         target_column=task["target_column"],
         model_dir=job_dir(job_id, "models"),
+        processed_dir=job_dir(job_id, "processed"),
+        artifact_dir=artifact_dir,
     )
+    artifacts.extend(ml_result.get("evaluation_artifacts", []))
+    if ml_result.get("feature_importance", {}).get("plot"):
+        artifacts.append(ml_result["feature_importance"]["plot"])
 
     context = {
         "job_id": job_id,

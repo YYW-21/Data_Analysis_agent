@@ -24,3 +24,10 @@ class AnalysisJobResponse(BaseModel):
     metrics: dict
     artifacts: list[str]
     agent_plan: dict | None = None
+
+
+class PredictionResponse(BaseModel):
+    job_id: str
+    prediction_path: str
+    row_count: int
+    preview: list[dict]

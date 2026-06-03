@@ -16,6 +16,10 @@ DataPilot 是一个面向 CSV/XLSX 表格数据的自动分析项目。用户上
 - 自动训练多个候选模型，包括线性模型、随机森林、Boosting、XGBoost
 - 自动选择当前指标下表现最好的模型
 - 输出分类/回归评估指标
+- 保存清洗后的数据、特征预览和预处理摘要
+- 生成分类/回归评估图表
+- 生成最佳模型特征重要性
+- 支持上传新数据并调用已训练模型进行预测
 - 保存模型、图表、上下文和 Markdown 报告
 - 网页端默认中文显示，支持中文/英文切换
 - 没有 API Key 时自动回退到规则逻辑，项目仍可运行
@@ -286,6 +290,14 @@ curl -X POST http://127.0.0.1:8000/jobs \
 curl http://127.0.0.1:8000/jobs/<job_id>/report
 ```
 
+使用已训练模型预测新数据：
+
+```bash
+curl -F "file=@new_data.csv" http://127.0.0.1:8000/jobs/<job_id>/predict
+```
+
+预测接口会加载该任务保存的最佳模型 pipeline，对新数据执行同样的预处理，并返回预测结果预览和预测 CSV 路径。
+
 ## 项目结构
 
 ```text
@@ -321,12 +333,30 @@ src/datapilot/
 ```text
 storage/
   datasets/     上传的原始数据
-  artifacts/    EDA 图表
+  processed/    清洗后的数据、特征预览、预处理摘要、预测结果
+  artifacts/    EDA 图表、评估图表、特征重要性图
   models/       训练好的模型文件
   reports/      Markdown 报告和 context.json
 ```
 
-其中 `context.json` 会保存本次分析的完整结构化上下文，适合后续做 trace、评测和多轮追问。
+其中 `processed/<job_id>/` 会包含：
+
+- `cleaned.csv`：去重、删除目标列缺失样本、日期特征展开后的训练数据
+- `feature_preview.csv`：训练特征预览
+- `preprocessing_summary.json`：预处理摘要，包括删除行数、字段类型、缺失值填充策略、编码策略等
+- `predictions_*.csv`：新数据预测结果
+
+评估图表包括：
+
+- 分类任务：`confusion_matrix.png`
+- 回归任务：`predicted_vs_actual.png`、`residual_plot.png`
+
+特征重要性包括：
+
+- `feature_importance.png`
+- `feature_importance.csv`
+
+`context.json` 会保存本次分析的完整结构化上下文，适合后续做 trace、评测和多轮追问。
 
 ## 项目定位
 
