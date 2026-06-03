@@ -2,7 +2,7 @@ import json
 
 import pandas as pd
 from agents import Agent, OpenAIProvider, RunConfig, Runner
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from datapilot.core.config import settings
 from datapilot.tools.task_inference import infer_task
@@ -14,9 +14,13 @@ class AgentWorkflowPlan(BaseModel):
         description="The dataset column to predict or analyze as target. Must match a real column.",
     )
     task_type: str = Field(
+        default="classification",
         description="One of: classification, regression, eda_only.",
     )
-    metric: str = Field(description="Recommended primary metric, such as f1_macro or r2.")
+    metric: str | None = Field(
+        default=None,
+        description="Recommended primary metric, such as f1_macro or r2.",
+    )
     analysis_focus: list[str] = Field(
         default_factory=list,
         description="Key analysis points the user likely cares about.",
@@ -25,8 +29,20 @@ class AgentWorkflowPlan(BaseModel):
         default_factory=list,
         description="Short ordered steps for this analysis workflow.",
     )
-    confidence: float = Field(ge=0.0, le=1.0)
-    reason: str
+    confidence: float = Field(default=0.65, ge=0.0, le=1.0)
+    reason: str | None = None
+    reasoning: str | None = None
+
+    @field_validator("analysis_focus", "workflow_steps", mode="before")
+    @classmethod
+    def _coerce_list(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, list):
+            return [str(item) for item in value]
+        return [str(value)]
 
 
 def build_agent_plan(
@@ -51,6 +67,18 @@ def build_agent_plan(
             fallback,
             "Agent workflow is enabled, but OPENAI_API_KEY is not configured with a real key.",
         )
+    if _looks_like_anthropic_base_url():
+        if fallback is None:
+            raise ValueError(
+                "OPENAI_BASE_URL looks like an Anthropic-compatible endpoint. "
+                "The Agents SDK path in this project requires an OpenAI-compatible endpoint, "
+                "for example Xiaomi MiMo Token Plan: https://token-plan-cn.xiaomimimo.com/v1"
+            )
+        return _fallback_plan(
+            fallback,
+            "OPENAI_BASE_URL looks like an Anthropic-compatible endpoint. Use the "
+            "OpenAI-compatible endpoint, for example https://token-plan-cn.xiaomimimo.com/v1.",
+        )
 
     agent_context = _agent_context(df, profile, user_goal, target_column)
     planner = Agent(
@@ -61,7 +89,9 @@ def build_agent_plan(
             "Infer whether the task is classification, regression, or eda_only. "
             "Prefer the user's explicit target column when valid. "
             "Do not invent columns, metrics, or data properties. "
-            "Return concise structured output."
+            "Return concise structured output. Include target_column, task_type, metric, "
+            "analysis_focus, workflow_steps, confidence, and reason. "
+            "Use English ASCII text for analysis_focus, workflow_steps, and reason."
         ),
         model=settings.agent_model,
         output_type=AgentWorkflowPlan,
@@ -110,6 +140,13 @@ def _has_real_api_key() -> bool:
         settings.openai_api_key
         and settings.openai_api_key.strip()
         and settings.openai_api_key != "your_api_key_here"
+    )
+
+
+def _looks_like_anthropic_base_url() -> bool:
+    return bool(
+        settings.openai_base_url
+        and settings.openai_base_url.rstrip("/").lower().endswith("/anthropic")
     )
 
 
@@ -179,7 +216,7 @@ def _validate_agent_plan(df: pd.DataFrame, plan: dict, fallback: dict | None) ->
     if task_type == "eda_only":
         task_type = checked["task_type"]
 
-    metric = plan.get("metric") or checked["metric"]
+    metric = _validated_metric(plan.get("metric"), checked["metric"], task_type)
     if task_type != checked["task_type"]:
         task_type = checked["task_type"]
         metric = checked["metric"]
@@ -189,5 +226,16 @@ def _validate_agent_plan(df: pd.DataFrame, plan: dict, fallback: dict | None) ->
         "target_column": target_column,
         "task_type": task_type,
         "metric": metric,
+        "reason": plan.get("reason") or plan.get("reasoning") or "Agent generated a valid plan.",
         "validated_by_rules": True,
     }
+
+
+def _validated_metric(metric: str | None, fallback_metric: str, task_type: str) -> str:
+    allowed = {
+        "classification": {"accuracy", "precision_macro", "recall_macro", "f1_macro"},
+        "regression": {"mae", "rmse", "r2"},
+    }
+    if metric and metric in allowed.get(task_type, set()):
+        return metric
+    return fallback_metric

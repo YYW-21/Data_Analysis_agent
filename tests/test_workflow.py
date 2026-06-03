@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from datapilot.agents.agent_planner import build_agent_plan
 from datapilot.agents.orchestrator import run_analysis_workflow
@@ -39,7 +40,9 @@ def test_infer_task_classification() -> None:
     assert task["target_column"] == "churn"
 
 
-def test_agent_plan_falls_back_to_rules_without_api_key() -> None:
+def test_agent_plan_falls_back_to_rules_without_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("datapilot.agents.agent_planner.settings.enable_agent_workflow", True)
+    monkeypatch.setattr("datapilot.agents.agent_planner.settings.openai_api_key", "")
     df = pd.DataFrame(
         {
             "feature": [1, 2, 3, 4],
@@ -55,7 +58,9 @@ def test_agent_plan_falls_back_to_rules_without_api_key() -> None:
     assert plan["task_type"] == "classification"
 
 
-def test_run_analysis_workflow_on_sample() -> None:
+def test_run_analysis_workflow_on_sample(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("datapilot.agents.agent_planner.settings.enable_agent_workflow", False)
+    monkeypatch.setattr("datapilot.agents.report_agent.settings.enable_llm_report", False)
     result = run_analysis_workflow(
         dataset_path=Path("examples/titanic_sample.csv"),
         user_goal="predict survival",
