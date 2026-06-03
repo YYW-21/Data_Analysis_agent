@@ -6,10 +6,7 @@ from datapilot.core.config import settings
 
 
 def generate_report(context: dict) -> str:
-    if context.get("multi_target"):
-        base_report = deterministic_multi_target_report(context)
-    else:
-        base_report = deterministic_report(context)
+    base_report = deterministic_report(context)
     if (
         not settings.enable_llm_report
         or not _has_real_api_key()
@@ -131,72 +128,6 @@ def deterministic_report(context: dict) -> str:
             "",
             "本次分析完成了数据画像、EDA、确定性预处理、模型训练和指标评估。"
             "建议结合业务背景进一步检查目标列定义、样本偏差和重要特征的可解释性。",
-        ]
-    )
-    return "\n".join(lines) + "\n"
-
-
-def deterministic_multi_target_report(context: dict) -> str:
-    profile = context["profile"]
-    results = context["target_results"]
-    lines = [
-        "# DataPilot 多目标自动分析报告",
-        "",
-        "## 1. 数据集概览",
-        "",
-        f"- 行数: {profile['rows']}",
-        f"- 列数: {profile['columns']}",
-        f"- 重复行: {profile['duplicate_rows']}",
-        f"- 目标列数量: {len(results)}",
-        f"- 目标列: {', '.join(context['target_columns'])}",
-        "",
-        "## 2. 多目标结果汇总",
-        "",
-    ]
-
-    for result in results:
-        metrics = ", ".join(f"{key}={value:.4f}" for key, value in result["metrics"].items())
-        lines.append(
-            f"- `{result['target_column']}`: task={result['task_type']}, "
-            f"best_model={result['best_model']}, {metrics}"
-        )
-
-    lines.extend(
-        [
-            "",
-            "## 3. 分目标详情",
-            "",
-        ]
-    )
-
-    for result in results:
-        plan = result["agent_plan"]
-        ml = result["ml"]
-        lines.extend(
-            [
-                f"### {result['target_column']}",
-                "",
-                f"- 任务类型: `{result['task_type']}`",
-                f"- 最佳模型: `{result['best_model']}`",
-                f"- 任务理解来源: `{plan.get('source', 'rules')}`",
-                f"- 任务理解置信度: {plan.get('confidence', 0):.2f}",
-                f"- 模型文件: `{ml['model_path']}`",
-                "",
-                "候选模型指标:",
-                "",
-            ]
-        )
-        for item in ml["candidate_metrics"]:
-            metrics = ", ".join(f"{key}={value:.4f}" for key, value in item["metrics"].items())
-            lines.append(f"- `{item['model']}`: {metrics}")
-        lines.append("")
-
-    lines.extend(
-        [
-            "## 4. 结论",
-            "",
-            "本次分析对多个目标列分别完成了数据画像、EDA、预处理、模型训练和指标评估。"
-            "多目标结果之间不共享同一个模型；每个目标列都有独立的任务判断、模型选择和评估指标。",
         ]
     )
     return "\n".join(lines) + "\n"

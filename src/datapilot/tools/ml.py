@@ -26,7 +26,6 @@ def train_and_evaluate(
     task_type: str,
     target_column: str,
     model_dir: Path,
-    exclude_columns: list[str] | None = None,
 ) -> dict:
     model_dir.mkdir(parents=True, exist_ok=True)
     cleaned = df.drop_duplicates().copy()
@@ -34,9 +33,6 @@ def train_and_evaluate(
 
     y = cleaned[target_column]
     x = cleaned.drop(columns=[target_column])
-    excluded = [col for col in exclude_columns or [] if col in x.columns]
-    if excluded:
-        x = x.drop(columns=excluded)
     x = x.drop(columns=[col for col in x.columns if x[col].nunique(dropna=True) <= 1])
 
     datetime_cols = [
@@ -120,7 +116,7 @@ def train_and_evaluate(
         "features": {
             "numeric": numeric_features,
             "categorical": categorical_features,
-            "dropped": [target_column, *excluded],
+            "dropped": [target_column],
         },
     }
 

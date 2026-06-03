@@ -11,8 +11,6 @@ DataPilot 是一个面向 CSV/XLSX 表格数据的自动分析项目。用户上
 - 根据用户自然语言目标理解分析任务
 - 使用 OpenAI Agents SDK 可选增强任务理解
 - 自动判断分类或回归任务
-- 支持单目标列和多目标列批量分析
-- 网页端可以一键填入所有候选目标列
 - 自动生成 EDA 图表：缺失值、目标分布、相关性热力图
 - 自动构建 sklearn 预处理 Pipeline
 - 自动训练多个候选模型
@@ -34,7 +32,6 @@ src/datapilot/agents/agent_planner.py
 
 - 用户填写的分析目标
 - 用户手动选择的目标列，如果有
-- 用户手动输入的多个目标列，如果有
 - 数据集行列规模
 - 所有字段名
 - 字段类型
@@ -132,16 +129,6 @@ LLM 可选润色 Markdown 报告
 网页端展示指标、图表、Agent 计划和报告
 ```
 
-如果选择了多个目标列，DataPilot 会对每个目标列独立执行：
-
-```text
-目标列 A -> 任务理解 -> EDA -> 训练模型 -> 评估
-目标列 B -> 任务理解 -> EDA -> 训练模型 -> 评估
-目标列 C -> 任务理解 -> EDA -> 训练模型 -> 评估
-```
-
-多目标模式不是训练一个多输出模型，而是为每个目标列独立建立一个模型。训练某个目标列时，系统会自动把其他目标列从特征中排除，避免数据泄漏。
-
 ## 支持的任务
 
 当前主要支持：
@@ -149,7 +136,6 @@ LLM 可选润色 Markdown 报告
 - 二分类
 - 多分类
 - 回归
-- 多目标列批量分析，每个目标列独立判断任务类型和训练模型
 
 分类任务会输出：
 
@@ -266,20 +252,6 @@ curl -F "file=@examples/titanic_sample.csv" http://127.0.0.1:8000/datasets/uploa
 curl -X POST http://127.0.0.1:8000/jobs \
   -H "Content-Type: application/json" \
   -d "{\"dataset_id\":\"<dataset_id>\",\"user_goal\":\"预测乘客是否生还，并分析影响因素\",\"target_column\":\"survived\"}"
-```
-
-创建多目标分析任务：
-
-```bash
-curl -X POST http://127.0.0.1:8000/jobs \
-  -H "Content-Type: application/json" \
-  -d "{\"dataset_id\":\"<dataset_id>\",\"user_goal\":\"批量分析多个目标列\",\"target_columns\":[\"survived\",\"pclass\"]}"
-```
-
-网页端也可以在目标列输入框中使用英文逗号分隔多个目标列：
-
-```text
-survived, pclass, fare
 ```
 
 读取报告：
