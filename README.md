@@ -1,97 +1,324 @@
-# DataPilot: Data Analysis Agent
+# DataPilot：表格数据自动分析与建模 Agent
 
-DataPilot is an initial, controllable tabular data analysis workflow. It accepts a CSV/XLSX dataset, profiles the data, infers the task, runs EDA, applies deterministic preprocessing, trains several scikit-learn models, evaluates them, and generates a Markdown report. LLM usage is optional and limited to report writing.
+DataPilot 是一个面向 CSV/XLSX 表格数据的自动分析项目。用户上传数据集并填写分析目标后，系统会完成数据画像、任务理解、EDA 图表生成、确定性预处理、模型训练、指标评估和 Markdown 报告生成。
 
-## What This Version Does
+这个项目的设计重点是 **Agent 负责理解和规划，机器学习流程由受控 Python Pipeline 执行**。它不是让大模型随意写代码和执行代码，而是把 Agent 放在更可控、更适合工程落地的位置。
 
-- Upload CSV/XLSX datasets
-- Generate a dataset profile
-- Infer classification or regression tasks
-- Run basic EDA and save charts
-- Build a deterministic sklearn preprocessing pipeline
-- Train baseline candidate models
-- Evaluate classification/regression metrics
-- Generate a Markdown report
-- Optionally enhance the report with an OpenAI-compatible LLM API
-- Optionally use OpenAI Agents SDK to infer target column, task type, metric, and workflow plan
+## 当前能完成什么
 
-## Quick Start
+- 上传 CSV、XLSX、XLS 数据集
+- 自动生成数据画像：行列数、字段类型、缺失率、重复行、候选目标列
+- 根据用户自然语言目标理解分析任务
+- 使用 OpenAI Agents SDK 可选增强任务理解
+- 自动判断分类或回归任务
+- 自动生成 EDA 图表：缺失值、目标分布、相关性热力图
+- 自动构建 sklearn 预处理 Pipeline
+- 自动训练多个候选模型
+- 自动选择当前指标下表现最好的模型
+- 输出分类/回归评估指标
+- 保存模型、图表、上下文和 Markdown 报告
+- 网页端默认中文显示，支持中文/英文切换
+- 没有 API Key 时自动回退到规则逻辑，项目仍可运行
+
+## Agent 用在哪里
+
+Agent 目前只用于 **工作流规划和任务理解**，代码位置：
+
+```text
+src/datapilot/agents/agent_planner.py
+```
+
+当 `ENABLE_AGENT_WORKFLOW=true` 且 `.env` 中配置了真实 `OPENAI_API_KEY` 时，系统会把下面这些信息交给 Agent：
+
+- 用户填写的分析目标
+- 用户手动选择的目标列，如果有
+- 数据集行列规模
+- 所有字段名
+- 字段类型
+- 每列缺失率
+- 每列唯一值数量
+- 每列前几个样例值
+- 前 5 行样例数据
+- 规则系统初步识别出的候选目标列
+
+Agent 需要输出结构化计划：
+
+```json
+{
+  "target_column": "churn",
+  "task_type": "classification",
+  "metric": "f1_macro",
+  "analysis_focus": ["流失影响因素", "预测模型", "业务建议"],
+  "workflow_steps": ["profile_dataset", "run_eda", "train_models", "evaluate_model"],
+  "confidence": 0.86,
+  "reason": "用户目标提到客户流失，字段 churn 是二分类标签。"
+}
+```
+
+然后系统会做规则校验：
+
+- `target_column` 必须真实存在于数据集中
+- `task_type` 必须与目标列的数据类型基本一致
+- Agent 不能凭空创造字段
+- Agent 失败时自动回退到规则推断
+
+网页端的 `Agent 计划` 面板会显示本次任务理解来源：
+
+- `source=agent`：使用了 Agents SDK
+- `source=rules`：使用了规则回退
+
+## Agent 不会用在哪里
+
+当前版本不会让 Agent 做这些事情：
+
+- 不让 Agent 直接执行任意 Python 代码
+- 不让 Agent 直接读写本地任意文件
+- 不让 Agent 自己决定删除哪些文件
+- 不让 Agent 自己训练模型
+- 不让 Agent 自己生成 pandas/sklearn 代码并执行
+- 不让 Agent 直接修改数据集
+- 不让 Agent 绕过规则校验选择不存在的目标列
+
+这些步骤都由确定性代码完成：
+
+```text
+src/datapilot/tools/profiling.py        数据画像
+src/datapilot/tools/eda.py              EDA 图表
+src/datapilot/tools/ml.py               预处理、训练、评估
+src/datapilot/tools/task_inference.py   规则回退
+```
+
+这样做的原因是：算法工程项目需要可解释、可复现、可调试。Agent 用来提升自然语言理解和流程规划，核心 ML 训练链路保持稳定。
+
+## 完整运行流程
+
+```text
+用户上传数据集
+  |
+  v
+读取 CSV/XLSX
+  |
+  v
+Dataset Profiler 生成数据画像
+  |
+  v
+Agent Planner / Rule Fallback 理解任务
+  |
+  v
+规则校验目标列和任务类型
+  |
+  v
+EDA 工具生成图表
+  |
+  v
+sklearn Pipeline 自动预处理特征
+  |
+  v
+训练候选模型
+  |
+  v
+评估模型并选择最佳模型
+  |
+  v
+生成结构化上下文
+  |
+  v
+LLM 可选润色 Markdown 报告
+  |
+  v
+网页端展示指标、图表、Agent 计划和报告
+```
+
+## 支持的任务
+
+当前主要支持：
+
+- 二分类
+- 多分类
+- 回归
+
+分类任务会输出：
+
+- Accuracy
+- Precision Macro
+- Recall Macro
+- F1 Macro
+
+回归任务会输出：
+
+- MAE
+- RMSE
+- R2
+
+当前暂不支持：
+
+- 时间序列预测
+- 聚类分析
+- 深度学习模型
+- 自动超参数搜索
+- SHAP 可解释性
+- 多轮对话式数据分析
+- 真正的多 Agent 协作
+
+这些可以作为后续版本继续扩展。
+
+## 技术栈
+
+- Python
+- FastAPI
+- uv
+- pandas
+- scikit-learn
+- matplotlib
+- seaborn
+- OpenAI Python SDK
+- OpenAI Agents SDK
+- HTML/CSS/JavaScript 原生网页端
+
+## 快速开始
+
+安装依赖：
 
 ```bash
 uv sync
-cp .env.example .env
+```
+
+启动服务：
+
+```bash
 uv run uvicorn datapilot.main:app --reload
 ```
 
-Open:
+打开网页端：
 
 ```text
 http://127.0.0.1:8000
 ```
 
-The built-in web UI is Chinese by default and includes a language selector for Chinese/English.
-
-API docs:
+打开 API 文档：
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-## API Flow
+## 配置 API Key
 
-1. Upload a dataset:
+项目根目录需要有 `.env` 文件。本地 `.env` 不会提交到 GitHub。
+
+示例配置：
+
+```env
+OPENAI_API_KEY=your_api_key_here
+OPENAI_BASE_URL=
+OPENAI_MODEL=gpt-4o-mini
+ENABLE_LLM_REPORT=true
+ENABLE_AGENT_WORKFLOW=true
+AGENT_MODEL=gpt-4o-mini
+DATA_DIR=storage
+```
+
+你通常只需要修改：
+
+```env
+OPENAI_API_KEY=你的真实API_KEY
+OPENAI_BASE_URL=你的base_url
+AGENT_MODEL=你的Agent模型名
+OPENAI_MODEL=你的报告生成模型名
+```
+
+配置说明：
+
+- `OPENAI_API_KEY`：你的 API Key
+- `OPENAI_BASE_URL`：OpenAI 兼容网关地址；如果直接使用默认 OpenAI 地址，可以留空
+- `ENABLE_AGENT_WORKFLOW`：是否启用 Agents SDK 做任务理解和工作流计划
+- `AGENT_MODEL`：Agent Planner 使用的模型
+- `ENABLE_LLM_REPORT`：是否用 LLM 润色最终报告
+- `OPENAI_MODEL`：报告生成使用的模型
+- `DATA_DIR`：数据、图表、模型和报告保存目录
+
+如果 `OPENAI_API_KEY` 为空或仍是 `your_api_key_here`，系统不会请求 API，会自动使用规则逻辑。
+
+## API 使用流程
+
+上传数据集：
 
 ```bash
 curl -F "file=@examples/titanic_sample.csv" http://127.0.0.1:8000/datasets/upload
 ```
 
-2. Start an analysis job:
+创建分析任务：
 
 ```bash
 curl -X POST http://127.0.0.1:8000/jobs \
   -H "Content-Type: application/json" \
-  -d "{\"dataset_id\":\"<dataset_id>\",\"user_goal\":\"predict survival\",\"target_column\":\"survived\"}"
+  -d "{\"dataset_id\":\"<dataset_id>\",\"user_goal\":\"预测乘客是否生还，并分析影响因素\",\"target_column\":\"survived\"}"
 ```
 
-3. Read the generated report:
+读取报告：
 
 ```bash
 curl http://127.0.0.1:8000/jobs/<job_id>/report
 ```
 
-## LLM Configuration
-
-LLM reporting and Agent workflow planning are optional. The project uses the official `openai` Python SDK for report writing and the OpenAI Agents SDK for workflow planning. OpenAI-compatible gateways are supported through environment variables:
-
-```env
-OPENAI_API_KEY=your_key
-OPENAI_BASE_URL=https://your-compatible-endpoint/v1
-OPENAI_MODEL=gpt-4o-mini
-ENABLE_LLM_REPORT=true
-ENABLE_AGENT_WORKFLOW=true
-AGENT_MODEL=gpt-4o-mini
-```
-
-If no API key is configured, DataPilot falls back to rule-based task inference and a deterministic Markdown report.
-
-The key variables you usually need to edit are:
-
-- `OPENAI_API_KEY`: your API key.
-- `OPENAI_BASE_URL`: your API gateway endpoint, if you use one.
-- `AGENT_MODEL`: the model used by the Agents SDK for target-column and workflow planning.
-- `OPENAI_MODEL`: the model used to polish the final report.
-
-## Project Structure
+## 项目结构
 
 ```text
 src/datapilot/
-  agents/          workflow orchestration and report generation
-  api/             FastAPI routers
-  core/            config and storage helpers
-  schemas/         request/response models
-  tools/           deterministic profiling, EDA, ML, plotting tools
+  agents/
+    agent_planner.py      Agents SDK 任务理解与计划
+    orchestrator.py       主工作流编排
+    report_agent.py       报告生成与 LLM 润色
+  api/
+    datasets.py           数据集上传和画像接口
+    jobs.py               分析任务接口
+  core/
+    config.py             环境变量配置
+    storage.py            存储路径工具
+  schemas/
+    jobs.py               API 输入输出模型
+  tools/
+    data_loader.py        CSV/XLSX 读取
+    profiling.py          数据画像
+    task_inference.py     规则任务推断
+    eda.py                EDA 图表生成
+    ml.py                 sklearn 建模流程
+  web/
+    index.html            网页端
+    styles.css            页面样式
+    app.js                页面交互逻辑
 ```
 
-## Design Principle
+## 输出文件
 
-The first version intentionally keeps the core ML workflow deterministic. LLMs are not allowed to execute arbitrary code. This makes the system easier to debug, evaluate, and explain in interviews.
+运行任务后，默认会在 `storage/` 下生成：
+
+```text
+storage/
+  datasets/     上传的原始数据
+  artifacts/    EDA 图表
+  models/       训练好的模型文件
+  reports/      Markdown 报告和 context.json
+```
+
+其中 `context.json` 会保存本次分析的完整结构化上下文，适合后续做 trace、评测和多轮追问。
+
+## 项目定位
+
+这个项目适合作为算法工程师实习项目的第一阶段：
+
+- 展示基础 ML Pipeline 能力
+- 展示 Agent 与传统算法流程结合的能力
+- 展示 FastAPI 工程化能力
+- 展示数据分析、建模、评估和报告生成闭环
+- 展示对可控 Agent 边界的理解
+
+后续可扩展方向：
+
+- SHAP 可解释性分析
+- 自动超参数搜索
+- 多轮追问
+- 分析任务 trace 可视化
+- 多 Agent 协作
+- 更多公开数据集 benchmark
+- 数据清洗策略人工确认
+- 代码仓库理解与自动修复 Agent

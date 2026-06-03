@@ -67,7 +67,7 @@ def deterministic_report(context: dict) -> str:
         [
             "",
             "## 3. 数据质量",
-        "",
+            "",
         ]
     )
     if profile["warnings"]:
