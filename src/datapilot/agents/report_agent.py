@@ -120,6 +120,10 @@ def deterministic_report(context: dict) -> str:
     for item in ml["candidate_metrics"]:
         metrics = ", ".join(f"{k}={v:.4f}" for k, v in item["metrics"].items())
         lines.append(f"- `{item['model']}`: {metrics}")
+    if ml.get("failed_models"):
+        lines.extend(["", "### 失败的候选模型", ""])
+        for item in ml["failed_models"]:
+            lines.append(f"- `{item['model']}`: {item['error']}")
 
     lines.extend(
         [

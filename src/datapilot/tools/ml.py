@@ -4,7 +4,16 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.ensemble import (
+    ExtraTreesClassifier,
+    ExtraTreesRegressor,
+    GradientBoostingClassifier,
+    GradientBoostingRegressor,
+    HistGradientBoostingClassifier,
+    HistGradientBoostingRegressor,
+    RandomForestClassifier,
+    RandomForestRegressor,
+)
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression, LogisticRegression, Ridge
 from sklearn.metrics import (
@@ -18,7 +27,8 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
+from xgboost import XGBClassifier, XGBRegressor
 
 
 def train_and_evaluate(
@@ -76,7 +86,7 @@ def train_and_evaluate(
                 Pipeline(
                     steps=[
                         ("imputer", SimpleImputer(strategy="most_frequent")),
-                        ("onehot", OneHotEncoder(handle_unknown="ignore")),
+                        ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
                     ]
                 ),
                 categorical_features,
@@ -92,19 +102,44 @@ def train_and_evaluate(
         x, y, test_size=0.2, random_state=42, stratify=stratify
     )
 
-    candidates = _candidate_models(task_type)
+    candidates = _candidate_models(task_type, y_train)
     results = []
+    failed_models = []
     for name, estimator in candidates.items():
         pipeline = Pipeline(steps=[("preprocessor", preprocessor), ("model", estimator)])
-        pipeline.fit(x_train, y_train)
-        predictions = pipeline.predict(x_test)
-        metrics = _metrics(task_type, y_test, predictions)
-        results.append({"name": name, "pipeline": pipeline, "metrics": metrics})
+        try:
+            y_fit = y_train
+            target_encoder = None
+            if task_type == "classification" and name == "xgboost":
+                target_encoder = LabelEncoder()
+                y_fit = target_encoder.fit_transform(y_train)
+
+            pipeline.fit(x_train, y_fit)
+            predictions = pipeline.predict(x_test)
+            if target_encoder is not None:
+                predictions = target_encoder.inverse_transform(predictions.astype(int))
+
+            metrics = _metrics(task_type, y_test, predictions)
+            results.append(
+                {
+                    "name": name,
+                    "pipeline": pipeline,
+                    "target_encoder": target_encoder,
+                    "metrics": metrics,
+                }
+            )
+        except Exception as exc:
+            failed_models.append({"model": name, "error": str(exc)})
+
+    if not results:
+        errors = "; ".join(f"{item['model']}: {item['error']}" for item in failed_models)
+        raise ValueError(f"All candidate models failed. {errors}")
 
     score_key = "f1_macro" if task_type == "classification" else "r2"
     best = max(results, key=lambda item: item["metrics"][score_key])
     model_path = model_dir / f"{best['name']}.joblib"
-    joblib.dump(best["pipeline"], model_path)
+    artifact = {"pipeline": best["pipeline"], "target_encoder": best["target_encoder"]}
+    joblib.dump(artifact, model_path)
 
     return {
         "best_model": best["name"],
@@ -113,6 +148,7 @@ def train_and_evaluate(
         "candidate_metrics": [
             {"model": item["name"], "metrics": item["metrics"]} for item in results
         ],
+        "failed_models": failed_models,
         "features": {
             "numeric": numeric_features,
             "categorical": categorical_features,
@@ -121,16 +157,48 @@ def train_and_evaluate(
     }
 
 
-def _candidate_models(task_type: str) -> dict:
+def _candidate_models(task_type: str, y_train: pd.Series) -> dict:
     if task_type == "classification":
+        xgb_params = {
+            "n_estimators": 200,
+            "learning_rate": 0.05,
+            "max_depth": 4,
+            "subsample": 0.9,
+            "colsample_bytree": 0.9,
+            "tree_method": "hist",
+            "random_state": 42,
+            "n_jobs": 1,
+            "eval_metric": "logloss" if y_train.nunique() <= 2 else "mlogloss",
+        }
+        if y_train.nunique() > 2:
+            xgb_params["objective"] = "multi:softprob"
+            xgb_params["num_class"] = int(y_train.nunique())
         return {
             "logistic_regression": LogisticRegression(max_iter=1000),
             "random_forest": RandomForestClassifier(n_estimators=200, random_state=42),
+            "extra_trees": ExtraTreesClassifier(n_estimators=200, random_state=42),
+            "gradient_boosting": GradientBoostingClassifier(random_state=42),
+            "hist_gradient_boosting": HistGradientBoostingClassifier(random_state=42),
+            "xgboost": XGBClassifier(**xgb_params),
         }
     return {
         "linear_regression": LinearRegression(),
         "ridge": Ridge(),
         "random_forest": RandomForestRegressor(n_estimators=200, random_state=42),
+        "extra_trees": ExtraTreesRegressor(n_estimators=200, random_state=42),
+        "gradient_boosting": GradientBoostingRegressor(random_state=42),
+        "hist_gradient_boosting": HistGradientBoostingRegressor(random_state=42),
+        "xgboost": XGBRegressor(
+            n_estimators=200,
+            learning_rate=0.05,
+            max_depth=4,
+            subsample=0.9,
+            colsample_bytree=0.9,
+            tree_method="hist",
+            objective="reg:squarederror",
+            random_state=42,
+            n_jobs=1,
+        ),
     }
 
 

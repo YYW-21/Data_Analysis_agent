@@ -13,7 +13,7 @@ DataPilot 是一个面向 CSV/XLSX 表格数据的自动分析项目。用户上
 - 自动判断分类或回归任务
 - 自动生成 EDA 图表：缺失值、目标分布、相关性热力图
 - 自动构建 sklearn 预处理 Pipeline
-- 自动训练多个候选模型
+- 自动训练多个候选模型，包括线性模型、随机森林、Boosting、XGBoost
 - 自动选择当前指标下表现最好的模型
 - 输出分类/回归评估指标
 - 保存模型、图表、上下文和 Markdown 报告
@@ -150,6 +150,31 @@ LLM 可选润色 Markdown 报告
 - RMSE
 - R2
 
+## 候选模型
+
+当前版本会根据任务类型自动训练一组候选模型，并用主指标选择最佳模型。分类任务默认用 `f1_macro` 选择，回归任务默认用 `r2` 选择。
+
+分类候选模型：
+
+- Logistic Regression
+- Random Forest Classifier
+- Extra Trees Classifier
+- Gradient Boosting Classifier
+- HistGradientBoosting Classifier
+- XGBoost Classifier
+
+回归候选模型：
+
+- Linear Regression
+- Ridge Regression
+- Random Forest Regressor
+- Extra Trees Regressor
+- Gradient Boosting Regressor
+- HistGradientBoosting Regressor
+- XGBoost Regressor
+
+这些模型目前是候选模型池，不做复杂自动调参。某个模型如果因为数据规模、标签格式或依赖兼容问题训练失败，系统会记录失败原因，并继续比较其他可用模型，避免整个分析任务中断。
+
 当前暂不支持：
 
 - 时间序列预测
@@ -169,6 +194,7 @@ LLM 可选润色 Markdown 报告
 - uv
 - pandas
 - scikit-learn
+- XGBoost
 - matplotlib
 - seaborn
 - OpenAI Python SDK
