@@ -138,6 +138,8 @@
 
             <div class="tabs">
               <a href="#metricsSection" data-i18n="metricsTitle">模型指标</a>
+              <a href="#leaderboardSection" data-i18n="leaderboardTitle">模型排行榜</a>
+              <a href="#traceSection" data-i18n="traceTitle">任务 Trace</a>
               <a href="#agentSection" data-i18n="agentPlanTitle">Agent 计划</a>
               <a href="#chartsSection" data-i18n="artifactsTitle">分析图表</a>
               <a href="#predictSection" data-i18n="predictTitle">新数据预测</a>
@@ -154,6 +156,21 @@
                 <pre id="agentPlanBox" class="json-box"></pre>
               </section>
             </div>
+
+            <section id="leaderboardSection" class="result-block">
+              <h3 data-i18n="leaderboardTitle">模型排行榜</h3>
+              <p class="hint" data-i18n="leaderboardHint">
+                按交叉验证均值排序，留出集指标用于最终泛化检查。
+              </p>
+              <div class="table-wrap">
+                <table id="leaderboardTable" class="preview-table"></table>
+              </div>
+            </section>
+
+            <section id="traceSection" class="result-block">
+              <h3 data-i18n="traceTitle">任务 Trace</h3>
+              <div id="traceList" class="trace-list"></div>
+            </section>
 
             <section id="chartsSection" class="result-block">
               <h3 data-i18n="artifactsTitle">分析图表</h3>

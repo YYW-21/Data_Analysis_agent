@@ -72,6 +72,15 @@ def test_run_analysis_workflow_on_sample(monkeypatch: pytest.MonkeyPatch) -> Non
     assert result.task_type == "classification"
     assert result.best_model is not None
     assert Path(result.report_path).exists()
+    assert result.model_leaderboard
+    assert result.cross_validation
+    assert result.trace
+    assert {item["stage"] for item in result.trace} >= {
+        "load_dataset",
+        "agent_planning",
+        "model_training",
+        "report_generation",
+    }
 
 
 def test_training_uses_advanced_candidate_models(tmp_path: Path) -> None:
@@ -119,6 +128,10 @@ def test_training_uses_advanced_candidate_models(tmp_path: Path) -> None:
     assert int(cleaned.isna().sum().sum()) == 0
     assert int(feature_preview.isna().sum().sum()) == 0
     assert result["evaluation_artifacts"]
+    assert result["model_leaderboard"]
+    assert result["model_leaderboard"][0]["is_best"]
+    assert result["cross_validation"]["folds"] >= 2
+    assert all("cross_validation" in item for item in result["candidate_metrics"])
     assert Path(result["evaluation_artifacts"][0]).exists()
     if result["feature_importance"]:
         assert Path(result["feature_importance"]["plot"]).exists()

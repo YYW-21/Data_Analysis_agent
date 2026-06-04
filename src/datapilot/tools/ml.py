@@ -32,7 +32,7 @@ from sklearn.metrics import (
     r2_score,
     recall_score,
 )
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import KFold, StratifiedKFold, cross_val_score, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 from xgboost import XGBClassifier, XGBRegressor
@@ -136,9 +136,20 @@ def train_and_evaluate(
     candidates = _candidate_models(task_type, y_train)
     results = []
     failed_models = []
+    score_key = "f1_macro" if task_type == "classification" else "r2"
+    cv_strategy = _cross_validation_strategy(task_type, y)
     for name, estimator in candidates.items():
         pipeline = Pipeline(steps=[("preprocessor", preprocessor), ("model", estimator)])
         try:
+            cross_validation = _cross_validate_candidate(
+                pipeline=pipeline,
+                x=x,
+                y=y,
+                task_type=task_type,
+                model_name=name,
+                cv_strategy=cv_strategy,
+                score_key=score_key,
+            )
             y_fit = y_train
             target_encoder = None
             if task_type == "classification" and name == "xgboost":
@@ -157,6 +168,7 @@ def train_and_evaluate(
                     "pipeline": pipeline,
                     "target_encoder": target_encoder,
                     "metrics": metrics,
+                    "cross_validation": cross_validation,
                 }
             )
         except Exception as exc:
@@ -166,8 +178,14 @@ def train_and_evaluate(
         errors = "; ".join(f"{item['model']}: {item['error']}" for item in failed_models)
         raise ValueError(f"All candidate models failed. {errors}")
 
-    score_key = "f1_macro" if task_type == "classification" else "r2"
-    best = max(results, key=lambda item: item["metrics"][score_key])
+    best = max(
+        results,
+        key=lambda item: (
+            _ranking_score(item["cross_validation"].get("mean_score")),
+            item["metrics"][score_key],
+        ),
+    )
+    leaderboard = _build_model_leaderboard(results, score_key, best["name"])
     model_path = model_dir / f"{best['name']}.joblib"
     artifact = {"pipeline": best["pipeline"], "target_encoder": best["target_encoder"]}
     joblib.dump(artifact, model_path)
@@ -188,8 +206,15 @@ def train_and_evaluate(
         "best_model": best["name"],
         "model_path": str(model_path),
         "metrics": best["metrics"],
+        "cross_validation": best["cross_validation"],
+        "model_leaderboard": leaderboard,
         "candidate_metrics": [
-            {"model": item["name"], "metrics": item["metrics"]} for item in results
+            {
+                "model": item["name"],
+                "metrics": item["metrics"],
+                "cross_validation": item["cross_validation"],
+            }
+            for item in results
         ],
         "failed_models": failed_models,
         "processed": processed_paths,
@@ -201,6 +226,91 @@ def train_and_evaluate(
             "dropped": [target_column, *dropped_constant_columns],
         },
     }
+
+
+def _cross_validation_strategy(task_type: str, y: pd.Series):
+    if task_type == "classification":
+        min_class_size = int(y.value_counts().min())
+        folds = min(5, min_class_size)
+        if folds < 2:
+            return None
+        return StratifiedKFold(n_splits=folds, shuffle=True, random_state=42)
+
+    folds = min(5, len(y))
+    if folds < 2:
+        return None
+    return KFold(n_splits=folds, shuffle=True, random_state=42)
+
+
+def _cross_validate_candidate(
+    pipeline: Pipeline,
+    x: pd.DataFrame,
+    y: pd.Series,
+    task_type: str,
+    model_name: str,
+    cv_strategy,
+    score_key: str,
+) -> dict:
+    if cv_strategy is None:
+        return {
+            "metric": score_key,
+            "folds": 0,
+            "scores": [],
+            "mean_score": None,
+            "std_score": None,
+            "status": "unavailable",
+        }
+
+    y_cv = y
+    if task_type == "classification" and model_name == "xgboost":
+        y_cv = LabelEncoder().fit_transform(y)
+
+    scores = cross_val_score(
+        pipeline,
+        x,
+        y_cv,
+        cv=cv_strategy,
+        scoring=score_key,
+        n_jobs=1,
+        error_score="raise",
+    )
+    return {
+        "metric": score_key,
+        "folds": int(cv_strategy.get_n_splits()),
+        "scores": [round(float(score), 6) for score in scores],
+        "mean_score": round(float(np.mean(scores)), 6),
+        "std_score": round(float(np.std(scores)), 6),
+        "status": "completed",
+    }
+
+
+def _build_model_leaderboard(results: list[dict], score_key: str, best_model: str) -> list[dict]:
+    ranked = sorted(
+        results,
+        key=lambda item: (
+            _ranking_score(item["cross_validation"].get("mean_score")),
+            item["metrics"][score_key],
+        ),
+        reverse=True,
+    )
+    return [
+        {
+            "rank": rank,
+            "model": item["name"],
+            "is_best": item["name"] == best_model,
+            "primary_metric": score_key,
+            "cv_mean": item["cross_validation"].get("mean_score"),
+            "cv_std": item["cross_validation"].get("std_score"),
+            "cv_folds": item["cross_validation"].get("folds", 0),
+            "holdout_score": item["metrics"][score_key],
+            "holdout_metrics": item["metrics"],
+        }
+        for rank, item in enumerate(ranked, start=1)
+    ]
+
+
+def _ranking_score(value: float | None) -> float:
+    return float(value) if value is not None else float("-inf")
 
 
 def predict_with_model(model_path: Path, df: pd.DataFrame) -> pd.DataFrame:

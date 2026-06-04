@@ -39,6 +39,16 @@ const i18n = {
     targetColumn: "目标列",
     bestModel: "最佳模型",
     metricsTitle: "模型指标",
+    leaderboardTitle: "模型排行榜",
+    leaderboardHint: "按交叉验证均值排序，留出集指标用于最终泛化检查。",
+    traceTitle: "任务 Trace",
+    rank: "排名",
+    model: "模型",
+    cvMean: "交叉验证均值",
+    cvStd: "标准差",
+    holdoutScore: "留出集得分",
+    folds: "折数",
+    duration: "耗时",
     agentPlanTitle: "Agent 计划",
     artifactsTitle: "分析图表",
     predictTitle: "新数据预测",
@@ -93,6 +103,16 @@ const i18n = {
     targetColumn: "Target Column",
     bestModel: "Best Model",
     metricsTitle: "Model Metrics",
+    leaderboardTitle: "Model Leaderboard",
+    leaderboardHint: "Ranked by cross-validation mean; holdout score checks final generalization.",
+    traceTitle: "Task Trace",
+    rank: "Rank",
+    model: "Model",
+    cvMean: "CV Mean",
+    cvStd: "Std Dev",
+    holdoutScore: "Holdout Score",
+    folds: "Folds",
+    duration: "Duration",
     agentPlanTitle: "Agent Plan",
     artifactsTitle: "Analysis Charts",
     predictTitle: "Predict New Data",
@@ -140,6 +160,8 @@ const flowTrain = document.querySelector("#flowTrain");
 const flowReport = document.querySelector("#flowReport");
 const predictionSummary = document.querySelector("#predictionSummary");
 const predictionTable = document.querySelector("#predictionTable");
+const leaderboardTable = document.querySelector("#leaderboardTable");
+const traceList = document.querySelector("#traceList");
 
 function t(key) {
   return i18n[currentLanguage][key] || key;
@@ -247,6 +269,8 @@ runButton.addEventListener("click", async () => {
   metricCards.innerHTML = "";
   predictionSummary.textContent = "";
   predictionTable.innerHTML = "";
+  leaderboardTable.innerHTML = "";
+  traceList.innerHTML = "";
   currentJobId = null;
   predictButton.disabled = true;
 
@@ -270,6 +294,8 @@ runButton.addEventListener("click", async () => {
     bestModel.textContent = data.best_model || "-";
     metricsBox.textContent = JSON.stringify(data.metrics, null, 2);
     renderMetricCards(data.metrics || {});
+    renderLeaderboard(data.model_leaderboard || []);
+    renderTrace(data.trace || []);
     agentPlanBox.textContent = JSON.stringify(data.agent_plan || {}, null, 2);
     data.artifacts.forEach((artifact) => {
       const figure = document.createElement("figure");
@@ -348,6 +374,76 @@ function renderMetricCards(metrics) {
     card.appendChild(label);
     card.appendChild(metric);
     metricCards.appendChild(card);
+  });
+}
+
+function formatScore(value) {
+  return typeof value === "number" ? value.toFixed(4) : "-";
+}
+
+function renderLeaderboard(rows) {
+  leaderboardTable.innerHTML = "";
+  if (!rows.length) {
+    return;
+  }
+  const columns = [
+    ["rank", t("rank")],
+    ["model", t("model")],
+    ["cv_mean", t("cvMean")],
+    ["cv_std", t("cvStd")],
+    ["holdout_score", t("holdoutScore")],
+    ["cv_folds", t("folds")],
+  ];
+  const thead = document.createElement("thead");
+  const header = document.createElement("tr");
+  columns.forEach(([, label]) => {
+    const th = document.createElement("th");
+    th.textContent = label;
+    header.appendChild(th);
+  });
+  thead.appendChild(header);
+  const tbody = document.createElement("tbody");
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    if (row.is_best) {
+      tr.classList.add("best-model-row");
+    }
+    columns.forEach(([key]) => {
+      const td = document.createElement("td");
+      td.textContent =
+        key === "model" && row.is_best
+          ? `${row[key]} ★`
+          : typeof row[key] === "number" && key !== "rank" && key !== "cv_folds"
+            ? formatScore(row[key])
+            : (row[key] ?? "-");
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  leaderboardTable.appendChild(thead);
+  leaderboardTable.appendChild(tbody);
+}
+
+function renderTrace(rows) {
+  traceList.innerHTML = "";
+  rows.forEach((row, index) => {
+    const item = document.createElement("div");
+    item.className = `trace-item ${row.status}`;
+    const marker = document.createElement("span");
+    marker.className = "trace-marker";
+    marker.textContent = String(index + 1).padStart(2, "0");
+    const content = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = row.stage;
+    const detail = document.createElement("span");
+    detail.textContent = `${row.status} · ${t("duration")}: ${formatScore(
+      row.duration_seconds,
+    )}s${row.error ? ` · ${row.error}` : ""}`;
+    content.appendChild(title);
+    content.appendChild(detail);
+    item.appendChild(marker);
+    item.appendChild(content);
+    traceList.appendChild(item);
   });
 }
 

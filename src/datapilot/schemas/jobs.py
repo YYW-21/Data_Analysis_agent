@@ -24,6 +24,9 @@ class AnalysisJobResponse(BaseModel):
     metrics: dict
     artifacts: list[str]
     agent_plan: dict | None = None
+    cross_validation: dict | None = None
+    model_leaderboard: list[dict] | None = None
+    trace: list[dict] | None = None
 
 
 class PredictionResponse(BaseModel):

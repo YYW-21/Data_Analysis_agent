@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from time import perf_counter
 
 from datapilot.agents.agent_planner import build_agent_plan
 from datapilot.agents.report_agent import generate_report
@@ -17,19 +18,54 @@ def run_analysis_workflow(
     target_column: str | None,
 ) -> AnalysisJobResponse:
     job_id = new_id("job")
-    df = load_dataframe(dataset_path)
+    trace = []
 
-    profile = profile_dataframe(df)
-    task = build_agent_plan(df, profile=profile, user_goal=user_goal, target_column=target_column)
+    def run_stage(name: str, operation):
+        started_at = perf_counter()
+        try:
+            result = operation()
+            trace.append(
+                {
+                    "stage": name,
+                    "status": "completed",
+                    "duration_seconds": round(perf_counter() - started_at, 4),
+                }
+            )
+            return result
+        except Exception as exc:
+            trace.append(
+                {
+                    "stage": name,
+                    "status": "failed",
+                    "duration_seconds": round(perf_counter() - started_at, 4),
+                    "error": str(exc),
+                }
+            )
+            raise
+
+    df = run_stage("load_dataset", lambda: load_dataframe(dataset_path))
+    profile = run_stage("profile_dataset", lambda: profile_dataframe(df))
+    task = run_stage(
+        "agent_planning",
+        lambda: build_agent_plan(
+            df, profile=profile, user_goal=user_goal, target_column=target_column
+        ),
+    )
     artifact_dir = job_dir(job_id, "artifacts")
-    artifacts = run_eda(df, task["target_column"], artifact_dir)
-    ml_result = train_and_evaluate(
-        df=df,
-        task_type=task["task_type"],
-        target_column=task["target_column"],
-        model_dir=job_dir(job_id, "models"),
-        processed_dir=job_dir(job_id, "processed"),
-        artifact_dir=artifact_dir,
+    artifacts = run_stage(
+        "exploratory_analysis",
+        lambda: run_eda(df, task["target_column"], artifact_dir),
+    )
+    ml_result = run_stage(
+        "model_training",
+        lambda: train_and_evaluate(
+            df=df,
+            task_type=task["task_type"],
+            target_column=task["target_column"],
+            model_dir=job_dir(job_id, "models"),
+            processed_dir=job_dir(job_id, "processed"),
+            artifact_dir=artifact_dir,
+        ),
     )
     artifacts.extend(ml_result.get("evaluation_artifacts", []))
     if ml_result.get("feature_importance", {}).get("plot"):
@@ -43,13 +79,19 @@ def run_analysis_workflow(
         "task": task,
         "artifacts": artifacts,
         "ml": ml_result,
+        "trace": trace,
     }
-    report = generate_report(context)
+    report = run_stage("report_generation", lambda: generate_report(context))
 
-    report_dir = job_dir(job_id, "reports")
-    report_path = report_dir / "report.md"
-    report_path.write_text(report, encoding="utf-8")
-    (report_dir / "context.json").write_text(
+    def save_outputs() -> Path:
+        report_dir = job_dir(job_id, "reports")
+        report_path = report_dir / "report.md"
+        report_path.write_text(report, encoding="utf-8")
+        return report_path
+
+    report_path = run_stage("save_outputs", save_outputs)
+    context["trace"] = trace
+    (report_path.parent / "context.json").write_text(
         json.dumps(context, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
@@ -63,4 +105,7 @@ def run_analysis_workflow(
         metrics=ml_result["metrics"],
         artifacts=artifacts,
         agent_plan=task,
+        cross_validation=ml_result["cross_validation"],
+        model_leaderboard=ml_result["model_leaderboard"],
+        trace=trace,
     )
